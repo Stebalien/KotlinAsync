@@ -5,9 +5,6 @@
 
 
 fun main(args: Array<String>) {
-    Runtime.getRuntime().addShutdownHook(Thread {
-        Runtime.getRuntime().runFinalization()
-    })
     async {
         val pa = wait(20)
         val pb = wait(20)

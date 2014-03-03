@@ -91,30 +91,42 @@ public class BasicPromise<T>(): Promise<T>, OpenPromise<T, T> {
         }
     }
 
-    [tailRecursive]
     private fun flush() {
-        // Continue flushing the callbacks while (a) they aren't empty and (b) we aren't holding the lock
-        if (lock.compareAndSet(false, true)) {
-            try {
-                when (state) {
-                    PromiseState.PENDING -> return
-                    PromiseState.BROKEN -> {
-                        callbacks.clear()
-                        catchers.fulfill(throwable!!)
-                    }
-                    PromiseState.FULFILLED -> {
-                        callbacks.fulfill(value!!)
-                        catchers.clear()
+        // Continue flushing the callbacks while
+        //   the state is either broken or fulfilled (completed),
+        // until
+        //   we see the queues empty and while not holding the lock.
+        do {} while ((callbacks.notEmpty || catchers.notEmpty)
+            && when (state) {
+                PromiseState.BROKEN -> {
+                    if (lock.compareAndSet(false, true)) {
+                        try {
+                            callbacks.clear()
+                            catchers.fulfill(throwable!!)
+                        } finally {
+                            lock.set(false)
+                        }
+                        true
+                    } else {
+                        false
                     }
                 }
-            } finally {
-                lock.set(false)
+                PromiseState.FULFILLED -> {
+                    if (lock.compareAndSet(false, true)) {
+                        try {
+                            callbacks.fulfill(value!!)
+                            catchers.clear()
+                        } finally {
+                            lock.set(false)
+                        }
+                        true
+                    } else {
+                        false
+                    }
+                }
+                else -> false
             }
-            // Need to check outside of the lock.
-            if (callbacks.notEmpty || catchers.notEmpty) {
-                flush()
-            }
-        }
+        )
     }
 
     override fun then<O>(cb: async.(T) -> Promise<O>): Promise<O> {

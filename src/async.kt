@@ -32,15 +32,15 @@ public trait Obligation<T> {
     public var state: PromiseState
         private set
 
-    public fun fulfill(v: T): Unit
-    public fun raise(e: Throwable): Unit
+    public fun fulfill(value: T): Unit
+    public fun raise(exception: Throwable): Unit
 
 }
 public class PromiseChainBypass<I, O>(private val promise: PromiseChain<*, O>, private val bypassValue: O): Obligation<I> {
     override var state: PromiseState = promise.state
         get() = promise.state
-    override fun fulfill(v: I): Unit =  promise.bypass(bypassValue)
-    override fun raise(e: Throwable): Unit = promise.raise(e)
+    override fun fulfill(value: I): Unit =  promise.bypass(bypassValue)
+    override fun raise(exception: Throwable): Unit = promise.raise(exception)
 }
 
 public trait OpenPromise<I, O>: Obligation<I>, Promise<O>
@@ -153,11 +153,11 @@ public class BasicPromise<T>(): Promise<T>, OpenPromise<T, T> {
         return promise
     }
 
-    override fun raise(e: Throwable) {
+    override fun raise(exception: Throwable) {
         if (!internalState.compareAndSet(PromiseState.PENDING, PromiseState.CHANGING)) {
             throw IllegalStateException("Promise already fulfilled.")
         }
-        throwable = e
+        throwable = exception
         internalState.set(PromiseState.BROKEN)
         flush()
     }
@@ -173,10 +173,10 @@ public class BasicPromise<T>(): Promise<T>, OpenPromise<T, T> {
 }
 
 public class PrepaidPromise<A, I, O>(private val promise: OpenPromise<I, O>, private val value: I): OpenPromise<A, O>, Promise<O> by promise {
-    override fun fulfill(v: A) {
-        promise.fulfill(value)
+    override fun fulfill(value: A) {
+        promise.fulfill(this.value)
     }
-    override fun raise(e: Throwable) = promise.raise(e)
+    override fun raise(exception: Throwable) = promise.raise(exception)
 }
 
 public class TrivialPromise<T>(private val value: T): Promise<T> {
@@ -218,20 +218,20 @@ public class PromiseChain<I, O> public (
             intermediate.state
         }
 
-    override fun raise(e: Throwable) {
+    override fun raise(exception: Throwable) {
         if (!pending.compareAndSet(true, false)) {
             throw IllegalStateException("Promise not pending.")
         }
-        intermediate.raise(e)
+        intermediate.raise(exception)
     }
 
-    override fun fulfill(v: I) {
+    override fun fulfill(value: I) {
         if (!pending.compareAndSet(true, false)) {
             throw IllegalStateException("Promise not pending.")
         }
         var result: Promise<O>
         try {
-            result = async.fn(v)
+            result = async.fn(value)
         } catch (e: Throwable) {
             intermediate.raise(e)
             return
@@ -245,11 +245,11 @@ public class PromiseChain<I, O> public (
         }
     }
 
-    public fun bypass(v: O) {
+    public fun bypass(value: O) {
         if (!pending.compareAndSet(true, false)) {
             throw IllegalStateException("Promise not pending.")
         }
-        intermediate.fulfill(v)
+        intermediate.fulfill(value)
     }
 }
 

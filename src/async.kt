@@ -269,6 +269,12 @@ public object async {
             }
         }
     }
+    public fun each<T>(iterable: Iterable<T>, body: (T) -> Promise<Unit>): Promise<Unit> {
+        val iterator = iterable.iterator()
+        return loop({done(iterator.hasNext())}) {
+            body(iterator.next())
+        }
+    }
 }
 
 public fun async<O>(fn: async.() -> Promise<O>): Promise<O> = try {

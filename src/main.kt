@@ -20,9 +20,13 @@ fun main(args: Array<String>) {
                 // If there was some way to make something implement a trait, I could T implement T
                 done()
             }}              then { // And we always need a then :(
+            each(1..10) {
+                println(it)
+                done()
+            }               then {
             throw IllegalStateException("Here")
             done()
-        }} catchAll { e ->
+        }}} catchAll { e ->
             println("first catch")
             throw e
         } catchAll { e ->

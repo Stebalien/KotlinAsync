@@ -146,7 +146,7 @@ public class BasicPromise<T>(): Promise<T>, OpenPromise<T, T> {
     }
     override fun finally(fn: async.() -> Promise<Unit>): Promise<Unit> {
         if (state != PromiseState.PENDING) return async.fn()
-        val promise = PromiseChain<Any?, Unit>({async.fn()})
+        val promise = PromiseChain<Unit, Unit>({async.fn()})
         catchers.add(PrepaidPromise(promise, Unit.VALUE))
         callbacks.add(PrepaidPromise(promise, Unit.VALUE))
         flush()

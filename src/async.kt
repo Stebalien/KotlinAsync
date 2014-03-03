@@ -19,7 +19,7 @@ public trait Promise<T> {
     public fun then<O>(cb: async.(T) -> Promise<O>): Promise<O>
     // TODO: Doesn't work
     //public fun then<O>(cb: async.(T) -> O): Promise<O> = then {TrivialPromise(this.cb(it))}
-    public fun catch(fn: async.(e: Throwable) -> Promise<Unit>): Promise<Unit>
+    internal fun catchAll(fn: async.(e: Throwable) -> Promise<Unit>): Promise<Unit>
     public fun finally(fn: async.() -> Promise<Unit>): Promise<Unit>
     public fun plus<O>(other: Promise<O>): PromisePair<T, O> {
         return PromisePair(this, other)
@@ -47,7 +47,7 @@ public trait OpenPromise<I, O>: Obligation<I>, Promise<O>
 
 
 public class PromisePair<A, B>(private val promise1: Promise<A>, private val promise2: Promise<B>): Promise<Pair<A, B>> {
-    override fun catch(fn: async.(Throwable) -> Promise<Unit>): Promise<Unit> {
+    override fun catchAll(fn: async.(Throwable) -> Promise<Unit>): Promise<Unit> {
         throw UnsupportedOperationException()
     }
     override fun finally(fn: async.() -> Promise<Unit>): Promise<Unit> {
@@ -122,7 +122,7 @@ public class BasicPromise<T>(): Promise<T>, OpenPromise<T, T> {
         return future
     }
 
-    override fun catch(fn: async.(Throwable) -> Promise<Unit>): Promise<Unit> {
+    override fun catchAll(fn: async.(Throwable) -> Promise<Unit>): Promise<Unit> {
         if (state == PromiseState.FULFILLED) return async.done()
         val promise = PromiseChain(fn)
         callbacks.add(PromiseChainBypass(promise, Unit.VALUE))
@@ -172,14 +172,14 @@ public class TrivialPromise<T>(private val value: T): Promise<T> {
     } catch (e: Throwable) {
         EmptyPromise(e)
     }
-    override fun catch(fn: async.(Throwable) -> Promise<Unit>): Promise<Unit> = async.done()
+    override fun catchAll(fn: async.(Throwable) -> Promise<Unit>): Promise<Unit> = async.done()
     override fun finally(fn: async.() -> Promise<Unit>): Promise<Unit> = async.fn()
 }
 
 public class EmptyPromise<T>(private val exception: Throwable): Promise<T> {
     override var state: PromiseState = PromiseState.BROKEN
 
-    override fun catch(fn: async.(Throwable) -> Promise<Unit>): Promise<Unit> = try {
+    override fun catchAll(fn: async.(Throwable) -> Promise<Unit>): Promise<Unit> = try {
         async.fn(exception)
     } catch (e: Throwable) { EmptyPromise(e) }
 
@@ -212,7 +212,7 @@ public class PromiseChain<I, O> public (
         result.then {
             intermediate.fulfill(it)
             done()
-        } catch {
+        } catchAll {
             intermediate.raise(it)
             done() // Don't care
         }

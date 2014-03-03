@@ -25,10 +25,10 @@ fun main(args: Array<String>) {
             }}              then { // And we always need a then :(
             throw IllegalStateException("Here")
             done()
-        }} catch { e ->
+        }} catchAll { e ->
             println("first catch")
             throw e
-        } catch { e ->
+        } catchAll { e ->
             // Unfortunately, this actually wraps the previous catch...
             // That's why I don't let the user catch individual exceptions...
             println("second catch")
@@ -40,7 +40,7 @@ fun main(args: Array<String>) {
             println("not reached")
             done()
         }
-    }} catch { e ->
+    }} catchAll { e ->
         when (e) {
             is IllegalStateException -> println("Thrown!")
         }

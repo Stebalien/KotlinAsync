@@ -3,9 +3,7 @@
  */
 
 import java.util.concurrent.ConcurrentLinkedQueue
-import java.util.concurrent.Semaphore
-import PromiseState.BROKEN
-import PromiseState.PENDING
+import java.util.concurrent.atomic.AtomicBoolean
 
 public class UnfulfilledPromiseException: RuntimeException()
 
@@ -77,7 +75,7 @@ public class BasicPromise<T>(): Promise<T>, OpenPromise<T, T> {
     private var value: T? = null
     private val catchers = ConcurrentLinkedQueue<Obligation<Throwable>>() // Should we support multiple?? They'll all get called...
     private var throwable: Throwable? = null
-    private val lock = Semaphore(1) // Because we need a non-reentrant lock.
+    private val lock = AtomicBoolean(false)
 
     private fun <T> Iterable<Obligation<T>>.fulfill(v: T) {
         this.forEach {
@@ -92,7 +90,7 @@ public class BasicPromise<T>(): Promise<T>, OpenPromise<T, T> {
     [tailRecursive]
     private fun flush() {
         // Continue flushing the callbacks while (a) they aren't empty and (b) we aren't holding the lock
-        if (lock.tryAcquire()) {
+        if (lock.compareAndSet(false, true)) {
             try {
                 when (state) {
                     PromiseState.PENDING -> return
@@ -106,7 +104,7 @@ public class BasicPromise<T>(): Promise<T>, OpenPromise<T, T> {
                     }
                 }
             } finally {
-                lock.release()
+                lock.set(false)
             }
             // Need to check outside of the lock.
             if (callbacks.notEmpty || catchers.notEmpty) {

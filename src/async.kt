@@ -61,8 +61,8 @@ public class PromisePair<A, B>(private val promise1: Promise<A>, private val pro
         }
 
     override fun <O> then(cb: async.(Pair<A, B>) -> Promise<O>): Promise<O> {
-        return promise1.then { value1 ->
-            promise2.then { value2 ->
+        return promise1 then { value1 ->
+               promise2 then { value2 ->
                 cb(Pair(value1, value2))
             }
         }
@@ -236,7 +236,7 @@ public class PromiseChain<I, O> public (
             intermediate.raise(e)
             return
         }
-        result.then {
+        result then {
             intermediate.fulfill(it)
             done()
         } catchAll {

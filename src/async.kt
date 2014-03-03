@@ -4,6 +4,7 @@
 
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 
 public class UnfulfilledPromiseException: RuntimeException()
 
@@ -11,6 +12,7 @@ enum class PromiseState {
     PENDING
     FULFILLED
     BROKEN
+    CHANGING
 }
 
 public trait Promise<T> {
@@ -70,6 +72,8 @@ public class PromisePair<A, B>(private val promise1: Promise<A>, private val pro
 // TODO: Break promise on finalize?
 public class BasicPromise<T>(): Promise<T>, OpenPromise<T, T> {
     override var state: PromiseState = PromiseState.PENDING
+        get() = internalState.get()!!
+    private var internalState = AtomicReference(PromiseState.PENDING)
 
     private val callbacks = ConcurrentLinkedQueue<Obligation<T>>()
     private var value: T? = null
@@ -138,20 +142,20 @@ public class BasicPromise<T>(): Promise<T>, OpenPromise<T, T> {
     }
 
     override fun raise(e: Throwable) {
-        synchronized(state) {
-            if (state != PromiseState.PENDING) throw IllegalStateException("Promise already fulfilled.")
-            throwable = e
-            state = PromiseState.BROKEN
+        if (!internalState.compareAndSet(PromiseState.PENDING, PromiseState.CHANGING)) {
+            throw IllegalStateException("Promise already fulfilled.")
         }
+        throwable = e
+        internalState.set(PromiseState.BROKEN)
         flush()
     }
 
     override fun fulfill(value: T) {
-        synchronized(state) {
-            if (state != PromiseState.PENDING) throw IllegalStateException("Promise already fulfilled.")
-            this.value = value
-            state = PromiseState.FULFILLED
+        if (!internalState.compareAndSet(PromiseState.PENDING, PromiseState.CHANGING)) {
+            throw IllegalStateException("Promise already fulfilled.")
         }
+        this.value = value
+        internalState.set(PromiseState.FULFILLED)
         flush()
     }
 }
@@ -194,12 +198,25 @@ public class PromiseChain<I, O> public (
         private val intermediate: BasicPromise<O> = BasicPromise<O>() // How do I do this without exposing it...
 ): Promise<O> by intermediate, OpenPromise<I, O> {
 
+    private val pending = AtomicBoolean(true)
+    override var state: PromiseState = intermediate.state
+        get() = if (!pending.get() && intermediate.state == PromiseState.PENDING) {
+            PromiseState.CHANGING
+        } else {
+            intermediate.state
+        }
+
     override fun raise(e: Throwable) {
+        if (!pending.compareAndSet(true, false)) {
+            throw IllegalStateException("Promise not pending.")
+        }
         intermediate.raise(e)
     }
 
     override fun fulfill(v: I) {
-        // TODO: Two different meanings of state = FULFILLED.
+        if (!pending.compareAndSet(true, false)) {
+            throw IllegalStateException("Promise not pending.")
+        }
         var result: Promise<O>
         try {
             result = async.fn(v)
@@ -217,6 +234,9 @@ public class PromiseChain<I, O> public (
     }
 
     public fun bypass(v: O) {
+        if (!pending.compareAndSet(true, false)) {
+            throw IllegalStateException("Promise not pending.")
+        }
         intermediate.fulfill(v)
     }
 }

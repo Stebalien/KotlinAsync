@@ -39,7 +39,7 @@ public trait Obligation<T> {
         private set
 
     public fun fulfill(value: T): Unit
-    public fun raise(exception: Throwable): Unit
+    public fun abandon(exception: Throwable): Unit
 
 }
 
@@ -134,7 +134,7 @@ public class BasicPromise<T>(): Promise<T>, OpenPromise<T, T> {
         flush()
     }
 
-    override fun raise(exception: Throwable) {
+    override fun abandon(exception: Throwable) {
         if (!internalState.compareAndSet(PromiseState.PENDING, PromiseState.CHANGING)) {
             throw IllegalStateException("Promise already fulfilled.")
         }
@@ -157,7 +157,7 @@ public class PrepaidPromise<A, I, O>(private val promise: OpenPromise<I, O>, pri
     override fun fulfill(value: A) {
         promise.fulfill(this.value)
     }
-    override fun raise(exception: Throwable) = promise.raise(exception)
+    override fun abandon(exception: Throwable) = promise.abandon(exception)
 }
 
 public class TrivialPromise<T>(private val value: T): Promise<T> {
@@ -194,8 +194,8 @@ public class LoopBody internal (private val breakException: AsyncLoopException, 
 }
 
 fun <T> Obligation<T>.receive(promise: Promise<T>) {
-    promise then { this.fulfill(it) }
-    promise otherwise { this.raise(it) }
+    promise then        { this fulfill it }
+    promise otherwise   { this abandon it }
 }
 
 public class TryPromise<T>(private val promise: Promise<T>, private val otherPromise: BasicPromise<T> = BasicPromise()): Promise<T> by otherPromise {
@@ -244,9 +244,9 @@ public fun awhile(condition: Async<Boolean>.() -> Boolean, body: LoopBody.() -> 
             }
             result otherwise { e ->
                 when (e) {
-                    continueException -> resultingPromise receive awhile(condition, body)
-                    breakException -> resultingPromise fulfill Unit.VALUE
-                    else -> resultingPromise raise   e
+                    continueException ->    resultingPromise receive awhile(condition, body)
+                    breakException ->       resultingPromise fulfill Unit.VALUE
+                    else ->                 resultingPromise abandon e
                 }
             }
         }
@@ -279,7 +279,7 @@ public fun unblock<O>(fn: () -> O): Promise<O> {
         try {
             promise fulfill fn()
         } catch (e: Exception) {
-            promise raise e
+            promise abandon e
         }
     }
     return promise
@@ -291,15 +291,15 @@ public open class Async<O> internal () {
         val endPromise = BasicPromise<O>()
         promise then {
             try {
-                endPromise.fulfill(Async<O>().fn(it))
+                endPromise fulfill Async<O>().fn(it)
             } catch (e: ThrowablePromise<O>) {
-                e.then { endPromise.fulfill(it) }
+                e then { endPromise fulfill it  }
             } catch (e: Exception) {
-                endPromise.raise(e)
+                endPromise abandon e
             }
         }
         promise otherwise {
-            endPromise raise it
+            endPromise abandon it
         }
         throw ThrowablePromise(endPromise)
     }
@@ -316,7 +316,7 @@ public open class Async<O> internal () {
             } catch (e: ThrowablePromise<O>) {
                 promise receive e
             } catch (e: Exception) {
-                promise raise e
+                promise abandon e
             }
         }
         return promise

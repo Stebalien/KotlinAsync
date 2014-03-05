@@ -4,76 +4,42 @@
 
 
 
-fun main(args: Array<String>) {
-    async {
-        val pa = wait(20)
-        val pb = wait(20)
-        // Wait on them together.
-        pa + pb             then {
-        async {
-            var i = 0
-            // An async loop... =D
-            loop({done(i++ < 5)}) {
-                wait(30)    then {
-                println(i)
-                // Because I always need to return a promise. I wish I could make this automatic
-                // If there was some way to make something implement a trait, I could T implement T
-                done()
-            }}              then { // And we always need a then :(
-            each(1..10) {
-                println(it)
-                done()
-            }               then {
-            throw IllegalStateException("Here")
-            done()
-        }}} catchAll { e ->
-            println("first catch")
-            throw e
-        } catchAll { e ->
-            // Unfortunately, this actually wraps the previous catch...
-            // That's why I don't let the user catch individual exceptions...
-            println("second catch")
-            throw e
-        } finally {
-            println("regardless!")
-            done()
-        }                   then {
-            println("not reached")
-            done()
-        }
-    }} catchAll { e ->
-        when (e) {
-            is IllegalStateException -> println("Thrown!")
-        }
-        throw e
-        done()
-    }
-    // Nothing thrown in the end because we *could* have attached a catch... Not good...
+import java.util.concurrent.TimeUnit
 
-    /*
-        Thoughts...
+fun main(args: Array<String>): Unit {
+    async<Unit> {
+        await(TrivialPromise(1)) {
 
-        Define a special operator `=>` such that
+        // Kotlin *claims* it can't determine Int (but it can and does in the error message...)
+        await<Unit>(atry<Unit> {
+            println("before")
+            throw IllegalStateException("Testing")
+        }.catch(javaClass<IllegalStateException>()) {
+            println("here")
+        }.finally {
+            println("at last")
+        }) {
 
-            fun test(): Int {
-                a() => b
-                b() => c
-                return c
-            }
+        println("first")
+        await<Unit>(sleep(1000)) {
+        println("second")
+        await<Unit>(unblock{Thread.sleep(1000)}) {
+        println("third")
 
-        Is equivalent to:
+        await<Unit>(aforeach(1..10) {
+            if (it == 5) acontinue()
+            if (it == 8) abreak()
+            println(it)
+        }) {
 
-            fun test() {
-         return a() then { b ->
-                b() then { c ->
-                c
-            }}}
+        val linesPromise = java.io.File("/home/steb/go.kt").readLinesAsync()
+        println("reading lines")
+        await(linesPromise) { lines ->
 
-        Basically, `a => b` calls `then` on `a` with a function literal that
-            (1) contains the rest of the block and
-            (2) accepts an argument `b`
-        and sets the result as the value of the current block.
-
-        However, this doesn't really help with control flow...
-     */
+        await<Unit>(aforeach(lines) { line ->
+            println(line)
+        }) {
+        println("done")
+    }}}}}}}}
 }
+

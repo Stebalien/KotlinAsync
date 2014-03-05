@@ -5,6 +5,11 @@
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.Executors
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.Semaphore
+import java.util.concurrent.ScheduledExecutorService
 
 public class UnfulfilledPromiseException: RuntimeException()
 
@@ -15,12 +20,13 @@ enum class PromiseState {
     CHANGING
 }
 
+private val scheduler = Executors.newSingleThreadScheduledExecutor()
+private val threadManager = Executors.newCachedThreadPool()
+
 public trait Promise<T> {
-    public fun then<O>(cb: async.(T) -> Promise<O>): Promise<O>
-    // TODO: Doesn't work
-    //public fun then<O>(cb: async.(T) -> O): Promise<O> = then {TrivialPromise(this.cb(it))}
-    internal fun catchAll(fn: async.(e: Throwable) -> Promise<Unit>): Promise<Unit>
-    public fun finally(fn: async.() -> Promise<Unit>): Promise<Unit>
+    public fun then(cb: (T) -> Unit): Unit
+    internal fun otherwise(fn: (Throwable) -> Unit): Unit
+
     public fun plus<O>(other: Promise<O>): PromisePair<T, O> {
         return PromisePair(this, other)
     }
@@ -36,21 +42,11 @@ public trait Obligation<T> {
     public fun raise(exception: Throwable): Unit
 
 }
-public class PromiseChainBypass<I, O>(private val promise: PromiseChain<*, O>, private val bypassValue: O): Obligation<I> {
-    override var state: PromiseState = promise.state
-        get() = promise.state
-    override fun fulfill(value: I): Unit =  promise.bypass(bypassValue)
-    override fun raise(exception: Throwable): Unit = promise.raise(exception)
-}
 
 public trait OpenPromise<I, O>: Obligation<I>, Promise<O>
 
-
 public class PromisePair<A, B>(private val promise1: Promise<A>, private val promise2: Promise<B>): Promise<Pair<A, B>> {
-    override fun catchAll(fn: async.(Throwable) -> Promise<Unit>): Promise<Unit> {
-        throw UnsupportedOperationException()
-    }
-    override fun finally(fn: async.() -> Promise<Unit>): Promise<Unit> {
+    override fun otherwise(fn: (Throwable) -> Unit) {
         throw UnsupportedOperationException()
     }
     override var state: PromiseState = PromiseState.PENDING
@@ -60,10 +56,10 @@ public class PromisePair<A, B>(private val promise1: Promise<A>, private val pro
             else -> PromiseState.PENDING
         }
 
-    override fun <O> then(cb: async.(Pair<A, B>) -> Promise<O>): Promise<O> {
-        return promise1 then { value1 ->
-               promise2 then { value2 ->
-                cb(Pair(value1, value2))
+    override fun then(cb: (Pair<A, B>) -> Unit) {
+        promise1 then { value1 ->
+            promise2 then { value2 ->
+                cb(Pair(value1, value2)) // Put on scheduler?
             }
         }
     }
@@ -75,21 +71,11 @@ public class BasicPromise<T>(): Promise<T>, OpenPromise<T, T> {
         get() = internalState.get()!!
     private var internalState = AtomicReference(PromiseState.PENDING)
 
-    private val callbacks = ConcurrentLinkedQueue<Obligation<T>>()
+    private val callbacks = ConcurrentLinkedQueue<(T) -> Unit>()
     private var value: T? = null
-    private val catchers = ConcurrentLinkedQueue<Obligation<Throwable>>() // Should we support multiple?? They'll all get called...
+    private val catchers = ConcurrentLinkedQueue<(Throwable) -> Unit>() // Should we support multiple?? They'll all get called...
     private var throwable: Throwable? = null
     private val lock = AtomicBoolean(false)
-
-    private fun <T> Iterable<Obligation<T>>.fulfill(v: T) {
-        this.forEach {
-            try {
-                it.fulfill(v)
-            } catch (e: Throwable) {
-                it.raise(e)
-            }
-        }
-    }
 
     private fun flush() {
         // Continue flushing the callbacks while
@@ -102,7 +88,11 @@ public class BasicPromise<T>(): Promise<T>, OpenPromise<T, T> {
                     if (lock.compareAndSet(false, true)) {
                         try {
                             callbacks.clear()
-                            catchers.fulfill(throwable!!)
+                            val t = throwable!!
+                            while (catchers.notEmpty) {
+                                val fn = catchers.poll()!!
+                                scheduler.submit({fn(t)})
+                            }
                         } finally {
                             lock.set(false)
                         }
@@ -114,7 +104,11 @@ public class BasicPromise<T>(): Promise<T>, OpenPromise<T, T> {
                 PromiseState.FULFILLED -> {
                     if (lock.compareAndSet(false, true)) {
                         try {
-                            callbacks.fulfill(value!!)
+                            val v = value!!
+                            while (callbacks.notEmpty) {
+                                val fn = callbacks.poll()!!
+                                scheduler.submit({fn(v)})
+                            }
                             catchers.clear()
                         } finally {
                             lock.set(false)
@@ -129,28 +123,15 @@ public class BasicPromise<T>(): Promise<T>, OpenPromise<T, T> {
         )
     }
 
-    override fun then<O>(cb: async.(T) -> Promise<O>): Promise<O> {
-        val future = PromiseChain(cb)
-        callbacks.add(future)
+    override fun then(cb: (T) -> Unit) {
+        callbacks.add(cb)
         flush()
-        return future
     }
 
-    override fun catchAll(fn: async.(Throwable) -> Promise<Unit>): Promise<Unit> {
-        if (state == PromiseState.FULFILLED) return async.done()
-        val promise = PromiseChain(fn)
-        callbacks.add(PromiseChainBypass(promise, Unit.VALUE))
-        catchers.add(promise)
+    override fun otherwise(fn: (Throwable) -> Unit) {
+        if (state == PromiseState.FULFILLED) return
+        catchers.add(fn)
         flush()
-        return promise
-    }
-    override fun finally(fn: async.() -> Promise<Unit>): Promise<Unit> {
-        if (state != PromiseState.PENDING) return async.fn()
-        val promise = PromiseChain<Unit, Unit>({async.fn()})
-        catchers.add(PrepaidPromise(promise, Unit.VALUE))
-        callbacks.add(PrepaidPromise(promise, Unit.VALUE))
-        flush()
-        return promise
     }
 
     override fun raise(exception: Throwable) {
@@ -181,104 +162,167 @@ public class PrepaidPromise<A, I, O>(private val promise: OpenPromise<I, O>, pri
 
 public class TrivialPromise<T>(private val value: T): Promise<T> {
     override var state: PromiseState = PromiseState.FULFILLED
-    override fun then<O>(cb: async.(T) -> Promise<O>): Promise<O> = try {
-        async.cb(value)
-    } catch (e: Throwable) {
-        EmptyPromise(e)
+    override fun then(cb: (T) -> Unit) {
+        // Catch exception?
+        // Actually, just put it on the scheduler
+        // TODO
+        cb(value)
     }
-    override fun catchAll(fn: async.(Throwable) -> Promise<Unit>): Promise<Unit> = async.done()
-    override fun finally(fn: async.() -> Promise<Unit>): Promise<Unit> = async.fn()
+    override fun otherwise(fn: (Throwable) -> Unit) {}
 }
 
 public class EmptyPromise<T>(private val exception: Throwable): Promise<T> {
     override var state: PromiseState = PromiseState.BROKEN
-
-    override fun catchAll(fn: async.(Throwable) -> Promise<Unit>): Promise<Unit> = try {
-        async.fn(exception)
-    } catch (e: Throwable) { EmptyPromise(e) }
-
-    override fun finally(fn: async.() -> Promise<Unit>): Promise<Unit> = try {
-        async.fn()
-        EmptyPromise(exception)
-    } catch (e: Throwable) { EmptyPromise(e) }
-
-    override fun then<O>(cb: async.(T) -> Promise<O>): Promise<O> = EmptyPromise(exception)
+    override fun otherwise(fn: (Throwable) -> Unit) {
+        fn(exception)
+    }
+    override fun then(cb: (T) -> Unit) {}
 }
 
-public class PromiseChain<I, O> public (
-        private val fn: async.(I) -> Promise<O>,
-        private val intermediate: BasicPromise<O> = BasicPromise<O>() // How do I do this without exposing it...
-): Promise<O> by intermediate, OpenPromise<I, O> {
+private class ThrowablePromise<T>(private val promise: Promise<T>): Exception(), Promise<T> by promise
 
-    private val pending = AtomicBoolean(true)
-    override var state: PromiseState = intermediate.state
-        get() = if (!pending.get() && intermediate.state == PromiseState.PENDING) {
-            PromiseState.CHANGING
-        } else {
-            intermediate.state
-        }
+private class AsyncLoopException(msg: String) : Exception(msg)
 
-    override fun raise(exception: Throwable) {
-        if (!pending.compareAndSet(true, false)) {
-            throw IllegalStateException("Promise not pending.")
-        }
-        intermediate.raise(exception)
+public class LoopBody internal (private val breakException: AsyncLoopException, private val continueException: AsyncLoopException): Async<Unit>() {
+    // Break with exception???
+    public fun abreak() {
+        throw breakException
     }
-
-    override fun fulfill(value: I) {
-        if (!pending.compareAndSet(true, false)) {
-            throw IllegalStateException("Promise not pending.")
-        }
-        var result: Promise<O>
-        try {
-            result = async.fn(value)
-        } catch (e: Throwable) {
-            intermediate.raise(e)
-            return
-        }
-        result then {
-            intermediate.fulfill(it)
-            done()
-        } catchAll {
-            intermediate.raise(it)
-            done() // Don't care
-        }
-    }
-
-    public fun bypass(value: O) {
-        if (!pending.compareAndSet(true, false)) {
-            throw IllegalStateException("Promise not pending.")
-        }
-        intermediate.fulfill(value)
+    public fun acontinue() {
+        throw continueException
     }
 }
 
+fun <T> Obligation<T>.receive(promise: Promise<T>) {
+    promise then { this.fulfill(it) }
+    promise otherwise { this.raise(it) }
+}
 
-public object async {
-    public fun done(): Promise<Unit> = TrivialPromise(Unit.VALUE)
-    public fun done<T>(value: T): Promise<T> = TrivialPromise(value)
-    public fun wait(delay: Int): Promise<Unit> {
-        println("waiting...${delay}")
-        return done() // Actually do something...
+public class TryPromise<T>(private val promise: Promise<T>, private val otherPromise: BasicPromise<T> = BasicPromise()): Promise<T> by otherPromise {
+    {
+        promise then { otherPromise fulfill it }
     }
-    public fun loop(condition: async.() -> Promise<Boolean>, fn: async.() -> Promise<Unit>): Promise<Unit> {
-        return condition() then {
-            when (it) {
-                true -> fn() then { loop(condition, fn) }
-                else -> done()
+    private var caught = false
+    public fun catch(catcher: Async<T>.(Throwable) -> T) {
+        promise otherwise {
+            if (!caught) {
+                caught = true
+                otherPromise receive async<T>{catcher(it)}
             }
         }
     }
-    public fun each<T>(iterable: Iterable<T>, body: (T) -> Promise<Unit>): Promise<Unit> {
-        val iterator = iterable.iterator()
-        return loop({done(iterator.hasNext())}) {
-            body(iterator.next())
+    public fun catch<E>(cls: Class<E>, catcher: Async<T>.(E) -> T): TryPromise<T> {
+        promise otherwise {
+            if (!caught && (it.javaClass.identityEquals(cls) || it.javaClass.isInstance(cls)))  {
+                caught = true
+                otherPromise receive async<T>{catcher(it as E)}
+            }
         }
+        return this
+    }
+    // TODO: Deal with async finallies...
+    public fun finally(fn: () -> Unit): TryPromise<T> {
+        promise then {fn()}
+        promise otherwise {fn()}
+        return this
+    }
+
+}
+
+
+public fun awhile(condition: Async<Boolean>.() -> Boolean, body: LoopBody.() -> Unit): Promise<Unit> {
+    val breakException = AsyncLoopException("whileBreak")
+    val continueException = AsyncLoopException("whileCtd")
+    val bodyCtx = LoopBody(breakException, continueException)
+    val resultingPromise = BasicPromise<Unit>()
+
+    async(condition) then {
+        if (it) {
+            val result = async<Unit>({ bodyCtx.body() })
+            result then {
+                resultingPromise receive awhile(condition, body)
+            }
+            result otherwise { e ->
+                when (e) {
+                    continueException -> resultingPromise receive awhile(condition, body)
+                    breakException -> resultingPromise fulfill Unit.VALUE
+                    else -> resultingPromise raise   e
+                }
+            }
+        }
+    }
+    return resultingPromise
+}
+
+public fun aforeach<T>(iterable: Iterable<T>, body: LoopBody.(T) -> Unit): Promise<Unit> {
+    val iterator = iterable.iterator()
+    return awhile({iterator.hasNext()}) {
+        await(async{body(iterator.next())})
     }
 }
 
-public fun async<O>(fn: async.() -> Promise<O>): Promise<O> = try {
-    async.fn()
-} catch (e: Throwable) {
-    EmptyPromise(e)
+public fun atry<T>(fn: Async<T>.() -> T): TryPromise<T> {
+    return TryPromise(async(fn))
+}
+
+public fun sleep(delay: Long, units: TimeUnit = TimeUnit.MILLISECONDS): Promise<Unit> {
+    val p = BasicPromise<Unit>()
+    scheduler.schedule({
+        p.fulfill(Unit.VALUE)
+    }, delay, units)
+    return p
+}
+
+public fun unblock<O>(fn: () -> O): Promise<O> {
+    val promise = BasicPromise<O>()
+    threadManager.execute {
+        try {
+            promise fulfill fn()
+        } catch (e: Exception) {
+            promise raise e
+        }
+    }
+    return promise
+}
+
+public open class Async<O> internal () {
+    // Multiple return types would make this less insane...
+    public fun await<I>(promise: Promise<I>, fn: Async<O>.(I) -> O): O {
+        val endPromise = BasicPromise<O>()
+        promise then {
+            try {
+                endPromise.fulfill(Async<O>().fn(it))
+            } catch (e: ThrowablePromise<O>) {
+                e.then { endPromise.fulfill(it) }
+            } catch (e: Exception) {
+                endPromise.raise(e)
+            }
+        }
+        promise otherwise {
+            endPromise raise it
+        }
+        throw ThrowablePromise(endPromise)
+    }
+
+    public fun await(promise: Promise<O>) {
+        throw ThrowablePromise(promise)
+    }
+
+    public fun invoke(fn: Async<O>.() -> O): Promise<O> {
+        val promise = BasicPromise<O>()
+        scheduler.submit {
+            try {
+                promise fulfill this.fn()
+            } catch (e: ThrowablePromise<O>) {
+                promise receive e
+            } catch (e: Exception) {
+                promise raise e
+            }
+        }
+        return promise
+    }
+}
+
+public fun async<O>(fn: Async<O>.() -> O): Promise<O> {
+    return Async<O>().invoke(fn)
 }

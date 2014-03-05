@@ -8,6 +8,5 @@ fun java.io.File.readLinesAsync(): Promise<List<String>> = unblock {
 
 fun java.io.File.readTextAsync(): Promise<String> = async {
     await(readLinesAsync()) { lines ->
-        lines.makeString("\n")
-    }
-}
+    lines.makeString("\n")
+}}

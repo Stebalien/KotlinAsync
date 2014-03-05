@@ -74,5 +74,11 @@ An obligation may be fulfilled or abandoned from any thread but must only be ful
 All callbacks (then, otherwise, async, etc.) will be called on the same thread (the async thread).
 EXCEPT the unblock callback. For obvious reasons, it will be called on it's own thread.
 
+Warnings:
+
+1. Don't catch arbitrary exceptions. You'll break the control flow...
+2. This is an experiment. Please don't take offense at any heresies committed.
+3. Don't await in an if condition expression, just await before it.
+
  */
 

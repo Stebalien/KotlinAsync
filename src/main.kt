@@ -42,4 +42,37 @@ fun main(args: Array<String>): Unit {
         println("done")
     }}}}}}}}
 }
+/*
+THIS IS A PROTOTYPE/MOCKUP!!!
+
+Preferably, aforeach, atry, awhile, would all await by default but, for now, that makes it even harder to read.
+Also, pretend that the block after await is implicit. That is, if you see:
+
+    async {
+        await(something) { v ->
+
+    }}
+
+Imagine you're actually seeing:
+
+    async {
+        await something => v
+    }
+
+or
+
+    async {
+        val v = await something
+    }
+
+There is no ambiguity because nothing after an call await will EVER be run (it always throws a promise...).
+
+Guarantees:
+
+An obligation may be fulfilled or abandoned from any thread but must only be fulfilled or abandoned once.
+
+All callbacks (then, otherwise, async, etc.) will be called on the same thread (the async thread).
+EXCEPT the unblock callback. For obvious reasons, it will be called on it's own thread.
+
+ */
 

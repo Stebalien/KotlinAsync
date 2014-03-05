@@ -32,7 +32,7 @@ fun main(args: Array<String>): Unit {
             println(it)
         }) {
 
-        val linesPromise = java.io.File("/home/steb/go.kt").readLinesAsync()
+        val linesPromise = java.io.File("/etc/shells").readLinesAsync()
         println("reading lines")
         await(linesPromise) { lines ->
 

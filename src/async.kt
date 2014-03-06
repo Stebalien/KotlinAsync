@@ -300,13 +300,7 @@ public open class Async<O> internal () {
     public fun await<I>(promise: Promise<I>, fn: Async<O>.(I) -> O): O {
         val endPromise = BasicPromise<O>()
         promise then {
-            try {
-                endPromise fulfill Async<O>().fn(it)
-            } catch (e: ThrowablePromise<O>) {
-                endPromise receive e
-            } catch (e: Exception) {
-                endPromise abandon e
-            }
+            endPromise receive async{fn(it)}
         }
         promise otherwise {
             endPromise abandon it

@@ -75,52 +75,56 @@ public class BasicPromise<T>(): Promise<T>, OpenPromise<T, T> {
     private var value: T? = null
     private val catchers = ConcurrentLinkedQueue<(Throwable) -> Unit>() // Should we support multiple?? They'll all get called...
     private var throwable: Throwable? = null
-    private val lock = AtomicBoolean(false)
+
+    // This is an optimization. It ensures that there are at most 2
+    // scheduled flushes at a time per promise.
+    private var pendingFlush = AtomicBoolean(false)
 
     private fun flush() {
-        // Continue flushing the callbacks while
-        //   the state is either broken or fulfilled (completed),
-        // until
-        //   we see the queues empty and while not holding the lock.
-        do {} while ((callbacks.notEmpty || catchers.notEmpty)
-            && when (state) {
-                PromiseState.BROKEN -> {
-                    if (lock.compareAndSet(false, true)) {
-                        try {
-                            callbacks.clear()
-                            val t = throwable!!
-                            while (catchers.notEmpty) {
-                                val fn = catchers.poll()!!
-                                scheduler.submit({fn(t)})
-                            }
-                        } finally {
-                            lock.set(false)
-                        }
-                        true
-                    } else {
-                        false
-                    }
-                }
+        if (callbacks.notEmpty) {
+            when (state) {
                 PromiseState.FULFILLED -> {
-                    if (lock.compareAndSet(false, true)) {
-                        try {
-                            val v = value!!
+                    if (!pendingFlush.getAndSet(true)) {
+                        val value = value!!
+                        scheduler.execute {
+                            pendingFlush.set(false)
                             while (callbacks.notEmpty) {
-                                val fn = callbacks.poll()!!
-                                scheduler.submit({fn(v)})
+                                try {
+                                    val fn = callbacks.poll() ?: break
+                                    fn(value)
+                                } catch (e: Exception) {
+                                    // I can't do anything better...
+                                    e.printStackTrace()
+                                }
                             }
-                            catchers.clear()
-                        } finally {
-                            lock.set(false)
                         }
-                        true
-                    } else {
-                        false
                     }
                 }
-                else -> false
+                PromiseState.BROKEN -> callbacks.clear()
             }
-        )
+        }
+        if (catchers.notEmpty) {
+            when (state) {
+                PromiseState.BROKEN -> {
+                    if (!pendingFlush.getAndSet(true)) {
+                        val throwable = throwable!!
+                        scheduler.execute {
+                            pendingFlush.set(false)
+                            while (catchers.notEmpty) {
+                                try {
+                                    val fn = catchers.poll() ?: break
+                                    fn(throwable)
+                                } catch (e: Exception) {
+                                    // I can't do anything better...
+                                    e.printStackTrace()
+                                }
+                            }
+                        }
+                    }
+                }
+                PromiseState.FULFILLED -> catchers.clear()
+            }
+        }
     }
 
     override fun then(cb: (T) -> Unit) {

@@ -79,7 +79,14 @@ Notes:
 
     There is no ambiguity because nothing after an await call will EVER be run (it always throws a promise...).
 
+    Pretend that main can return a promise (asyncMain == main).
+
     Finally, the actual implementation WILL NOT use exceptions for control flow...
+
+Todo:
+    Doctor stack traces in exceptions. We can do this by storing them when awaiting and restoring them when continuing. This sounds
+    simple but is actually quite painful because I can't edit the actual stack, I can only replace exception stack
+    traces. I can do it, but it might not be worth implementing it at this point.
 
 Guarantees:
 
@@ -109,6 +116,8 @@ Warnings:
     1. Don't catch arbitrary exceptions. You'll break the control flow...
     2. This is an experiment. Please don't take offense at any heresies committed.
     3. Don't await in an if condition expression, just await before it.
+    4. Don't branch atry/catch/finally statements. This won't work when they are
+       actually statements not just function calls.
 
 Design Questions:
 
@@ -121,6 +130,12 @@ Design Questions:
        have a tendency to ignore returned errors and fulfilling a promise twice is often a program error. However, I
        might consider adding a (possibly extension) function `tryFulfill` that doesn't throw an exception. This would be
        useful in cases where multiple actors can fulfill an obligation.
+    4. Currently, I ensure that all then/otherwise callbacks are run from the scheduler. This is almost always redundant
+       because the callbacks are almost always intermediates that run a user function in an async environment (which will,
+       again, be put on the scheduler). Alternatively, I could relax some of the constraints and run then callbacks
+       directly. This would have the added benefit of letting users create their own promises without interacting with
+       the scheduler. HOWEVER, a call to then/fulfill would have to execute the callbacks itself which could lead to
+       other bugs...
 
 Other Notes:
     In general, I doubt that people will manually call then/fulfill very often. Most cases will be solvable using

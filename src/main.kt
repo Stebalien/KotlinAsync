@@ -85,9 +85,16 @@ Notes:
     Finally, the actual implementation WILL NOT use exceptions for control flow...
 
 Todo:
-    Doctor stack traces in exceptions. We can do this by storing them when awaiting and restoring them when continuing. This sounds
-    simple but is actually quite painful because I can't edit the actual stack, I can only replace exception stack
-    traces. I can do it, but it might not be worth implementing it at this point.
+    1. Doctor stack traces in exceptions. We can do this by storing them when awaiting and restoring them when continuing. This sounds
+       simple but is actually quite painful because I can't edit the actual stack, I can only replace exception stack
+       traces. I can do it, but it might not be worth implementing it at this point.
+
+    2. Implement a custom scheduler so we can determine if the program is done? Basically, exit if:
+          (a) The user asks (stop the scheduler)
+          (b) (1) There is nothing scheduled on either the threaded executor or scheduler.
+              (2) There are no other threads running.
+       This way the programmer can either (a) manually stop the scheduler or (b) exit everything else and let the scheduler
+       die naturally.
 
 Guarantees:
 

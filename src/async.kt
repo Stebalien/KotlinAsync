@@ -47,6 +47,7 @@ public trait OpenPromise<I, O>: Obligation<I>, Promise<O>
 
 public class PromisePair<A, B>(private val promise1: Promise<A>, private val promise2: Promise<B>): Promise<Pair<A, B>> {
     override fun otherwise(fn: (Throwable) -> Unit) {
+        // TODO Not easy to support with separate then/otherwise methods.
         throw UnsupportedOperationException()
     }
     override var state: PromiseState = PromiseState.PENDING

@@ -303,7 +303,7 @@ public open class Async<O> internal () {
             try {
                 endPromise fulfill Async<O>().fn(it)
             } catch (e: ThrowablePromise<O>) {
-                e then { endPromise fulfill it  }
+                endPromise receive e
             } catch (e: Exception) {
                 endPromise abandon e
             }

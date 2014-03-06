@@ -25,7 +25,7 @@ private val threadManager = Executors.newCachedThreadPool()
 
 public trait Promise<T> {
     public fun then(cb: (T) -> Unit): Unit
-    internal fun otherwise(fn: (Throwable) -> Unit): Unit
+    public fun otherwise(fn: (Throwable) -> Unit): Unit
 
     public fun plus<O>(other: Promise<O>): PromisePair<T, O> {
         return PromisePair(this, other)

@@ -33,6 +33,12 @@ val theInt: Int = await promisedInt
 `await` may only be used in an `async` block or a `try`/`while`/`for`/`if`/etc.
 block inside of an `async` block.
 
+The prototype also defines an `unblock` function. This does not need to be a
+keyword. Basically, `unblock{myMethod()}` returns a promise for the result of
+`myMethod()` and then calls `myMethod()` in a new thread (allocated as
+necessary from a thread pool). When `myMethod()` returns, it's return value is
+used to fulfill the promise.
+
 # Prototype Notes
 
 In an actual implementation, all `await(awhile/aforeach/...)` would just be

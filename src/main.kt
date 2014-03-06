@@ -51,7 +51,31 @@ fun asyncMain(args: Array<String>) = async<Unit> {
 /*
 THIS IS A PROTOTYPE/MOCKUP!!!
 
-Notes:
+Design (how it will work, not how it does work):
+
+This async design is very much like C#'s except that:
+    1. There is no async function modifier. If a function is asynchronous, it returns a Promise. Instead, there is an
+       async block that returns a promise. IMHO, this is slightly more flexible than C#s approach.
+
+    2. Everything runs on the same thread.
+
+At the core of this design is the `Promise<Value>`. Pretty much everything else is just sugar to make promises easier
+to work with. If you want to write an async function, just write a normal function but return a promise for the value
+instead of the value itself.
+
+This modification will add two keywords, async and await.
+
+async is just a block that returns a promise for it's inner value. That is:
+
+    val promisedInt: Promise<Int> = async { 0 }
+
+await is a keyword that causes a function to "pause" on a promise and then return it's value.
+
+    val theInt: Int = await promisedInt
+
+await may only be used in an async block or a try/while/for/if/etc. block inside of an async block.
+
+Prototype Notes:
 
     In an actual implementation, all await(awhile/aforeach/...) would just be written as the standard
     control statements (while, for, ...). These standard control statements would *become* the async
@@ -67,13 +91,6 @@ Notes:
         }}
 
     Imagine you're actually seeing:
-
-        async {
-            await something => v
-        }
-
-    or
-
         async {
             val v = await something
         }
@@ -119,7 +136,7 @@ Guarantees:
 
         Anyways, it won't deadlock and I highly doubt that this will be a significant bottleneck.
 
-Warnings:
+Prototype Warnings:
 
     1. Don't catch arbitrary exceptions. You'll break the control flow...
     2. This is an experiment. Please don't take offense at any heresies committed.
@@ -144,6 +161,7 @@ Design Questions:
        directly. This would have the added benefit of letting users create their own promises without interacting with
        the scheduler. HOWEVER, a call to then/fulfill would have to execute the callbacks itself which could lead to
        other bugs...
+    5. For now, there's only one event loop. We might want to add more? One per thread?
 
 Other Notes:
     In general, I doubt that people will manually call then/fulfill very often. Most cases will be solvable using

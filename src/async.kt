@@ -205,30 +205,38 @@ public class TryPromise<T>(private val promise: Promise<T>, private val otherPro
         promise then { otherPromise fulfill it }
     }
     private var caught = false
-    public fun catch(catcher: Async<T>.(Throwable) -> T) {
-        promise otherwise {
-            if (!caught) {
-                caught = true
-                otherPromise receive async<T>{catcher(it)}
-            }
-        }
-    }
     public fun catch<E>(cls: Class<E>, catcher: Async<T>.(E) -> T): TryPromise<T> {
         promise otherwise {
             if (!caught && (it.javaClass.identityEquals(cls) || it.javaClass.isInstance(cls)))  {
-                caught = true
+                caught = true // No need to synchronize
                 otherPromise receive async<T>{catcher(it as E)}
             }
         }
         return this
     }
-    // TODO: Deal with async finallies...
-    public fun finally(fn: () -> Unit): TryPromise<T> {
-        promise then {fn()}
-        promise otherwise {fn()}
-        return this
-    }
+    public fun finally(fn: Async<Unit>.() -> Unit): Promise<T> {
+        val finalPromise = BasicPromise<T>()
+        otherPromise then { value ->
+            val finally = async<Unit>(fn)
+            finally then {
+                finalPromise fulfill value
+            }
+            finally otherwise { error ->
+                finalPromise abandon error
+            }
 
+        }
+        otherPromise otherwise { error ->
+            val finally = async<Unit>(fn)
+            finally then {
+                finalPromise abandon error
+            }
+            finally otherwise { error2 ->
+                finalPromise abandon error2
+            }
+        }
+        return finalPromise
+    }
 }
 
 

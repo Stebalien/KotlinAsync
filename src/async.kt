@@ -318,7 +318,7 @@ public open class Async<O> internal () {
         throw ThrowablePromise(promise)
     }
 
-    public fun invoke(fn: Async<O>.() -> O): Promise<O> {
+    public fun async(fn: Async<O>.() -> O): Promise<O> {
         val promise = BasicPromise<O>()
         scheduler.submit {
             try {
@@ -334,5 +334,5 @@ public open class Async<O> internal () {
 }
 
 public fun async<O>(fn: Async<O>.() -> O): Promise<O> {
-    return Async<O>().invoke(fn)
+    return Async<O>().async(fn)
 }

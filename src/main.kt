@@ -15,8 +15,7 @@ fun main(args: Array<String>) {
 fun asyncMain(args: Array<String>) = async<Unit> {
     await(TrivialPromise(1)) {
 
-    // Kotlin *claims* it can't determine Int (but it can and does in the error message...)
-    await<Unit>(atry<Unit> {
+    await(atry<Unit> {
         println("before")
         throw IllegalStateException("Testing")
     }.catch(javaClass<IllegalStateException>()) {
@@ -27,6 +26,8 @@ fun asyncMain(args: Array<String>) = async<Unit> {
     }) {
 
     println("first")
+    // Kotlin *claims* it can't deduce the type Unit. However, it demonstrates
+    // that it can in the error message...
     await<Unit>(sleep(1000)) {
     println("second")
     await<Unit>(unblock{Thread.sleep(1000)}) {

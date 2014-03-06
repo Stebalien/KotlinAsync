@@ -248,7 +248,7 @@ public fun awhile(condition: Async<Boolean>.() -> Boolean, body: LoopBody.() -> 
 
     async(condition) then {
         if (it) {
-            val result = async<Unit>({ bodyCtx.body() })
+            val result = async<Unit>{bodyCtx.body()}
             result then {
                 resultingPromise receive awhile(condition, body)
             }

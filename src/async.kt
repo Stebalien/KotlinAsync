@@ -165,10 +165,7 @@ public class PrepaidPromise<A, I, O>(private val promise: OpenPromise<I, O>, pri
 public class TrivialPromise<T>(private val value: T): Promise<T> {
     override var state: PromiseState = PromiseState.FULFILLED
     override fun then(cb: (T) -> Unit) {
-        // Catch exception?
-        // Actually, just put it on the scheduler
-        // TODO
-        cb(value)
+        scheduler.execute { cb(value) }
     }
     override fun otherwise(fn: (Throwable) -> Unit) {}
 }
@@ -176,7 +173,7 @@ public class TrivialPromise<T>(private val value: T): Promise<T> {
 public class EmptyPromise<T>(private val exception: Throwable): Promise<T> {
     override var state: PromiseState = PromiseState.BROKEN
     override fun otherwise(fn: (Throwable) -> Unit) {
-        fn(exception)
+        scheduler.execute { fn(exception) }
     }
     override fun then(cb: (T) -> Unit) {}
 }

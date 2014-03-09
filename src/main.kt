@@ -60,3 +60,51 @@ fun asyncMain(args: Array<String>) = async<Unit> {
     }) {
     println("done")
 }}}}}}}}
+
+/* How it will actually look:
+
+fun asyncMain(args: Array<String>) = async {
+    await TrivialPromise(1)
+
+    try {
+        println("before")
+        throw IllegalStateException("Testing")
+    } catch (it: IllegalStateException) {
+        println("here")
+        //throw it
+    } finally {
+        println("at last")
+    }
+
+    println("first")
+
+    await sleep(1000)
+    println("second")
+    await unblock{Thread.sleep(1000)}
+    println("third")
+
+    var canceled = false
+    val interval = async {
+        while(!canceled) {
+            println("Interval")
+            await sleep(10, TimeUnit.SECONDS)
+        }
+    }
+
+    for (it in 1..10) {
+        if (it == 5) continue
+        if (it == 8) break
+        println(it)
+    }
+
+    val linesPromise = java.io.File("/etc/shells").readLinesAsync()
+    println("reading lines")
+    val lines = await linesPromise
+
+    for (line in lines)
+        println(line)
+    }
+    println("done")
+    await interval
+}
+ */

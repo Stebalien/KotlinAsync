@@ -305,7 +305,7 @@ public open class Async<O> internal () {
         throw ThrowablePromise(endPromise)
     }
 
-    public fun await(promise: Promise<O>) {
+    public fun await(promise: Promise<O>): O {
         throw ThrowablePromise(promise)
     }
 

@@ -258,3 +258,6 @@ are slightly different.
    then/otherwise callback can be added to a promise, there isn't a safe way
    (that I can think of) to avoid this. Anyways, IMHO, this isn't a problem.
 
+10. Shutdown. Currently, I'm thinking of doing this by waiting on a promise returned from the main function and, when this promise is either fulfilled or abandoned:
+  1.  Shutting down the scheduler.
+  2. Abandoning all unfulfilled promises with a `ShutdownException`.

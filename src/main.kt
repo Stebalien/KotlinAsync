@@ -28,7 +28,7 @@ fun asyncMain(args: Array<String>) = async<Unit> {
     println("first")
     // Kotlin *claims* it can't deduce the type Unit. However, it demonstrates
     // that it can in the error message...
-    await<Unit>(sleep(1000)) {
+    await<Unit>(delay(1000)) {
     println("second")
     await<Unit>(unblock{Thread.sleep(1000)}) {
     println("third")

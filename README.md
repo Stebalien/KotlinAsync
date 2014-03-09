@@ -80,13 +80,12 @@ Finally, the actual implementation WILL NOT use exceptions for control flow...
    replace exception stack traces. I can do it, but it might not be worth
    implementing it at this point.
 
-2. Implement a custom scheduler so we can determine if the program is done? Basically, exit if:
-  a. The user asks (stop the scheduler)
-  b. Otherwise
-    1. There is nothing scheduled on either the threaded executor or scheduler.
-    2. There are no other threads running.
-  This way the programmer can either (a) manually stop the scheduler or (b)
-  exit everything else and let the scheduler die naturally.
+2. Add shutdown procedure. This is kind of important. Idea:
+    a. If the main thread is asynchronous (returns a promise), wait on it
+       and shutdown when completed.
+    b. Otherwise, shutdown when the main-function exits?
+       Question: Define "shutdown". Send exceptions? We'll also probably want
+       to shutdown the scheduler....
 
 # Guarantees
 
@@ -125,23 +124,28 @@ bottleneck.
 3. Don't `await` in an `if` condition expression, just `await` before it.
 4. Don't branch atry/catch/finally statements. This won't work when they are
    actually statements not just function calls.
+5. Only call await from an `async` scope or an `a*` control block. Most importantly,
+   await is not valid directly inside a function literal.
 
 # Design Questions/Notes
 
 If you are familiar with Mozilla's JavaScript Promises, you'll notice that mine
 are slightly different.
 
-1. Unlike Mozilla's JavaScript Primises, mine are separated into Promises and
+1. Unlike Mozilla's JavaScript Promises, mine are separated into Promises and
    Obligations for safety and this isn't going to change.
+
 2. I have separate methods for receiving exceptions/receiving values. I could
    use a single method that accepts a nullable value and a nullable throwable
    (like JavaScript). I could also use a maybe type (`Maybe<T, Throwable>`).
+
 3. I throw an exception instead of returning false if you try to fulfill a
    promise twice. I do this because people have a tendency to ignore returned
    errors and fulfilling a promise twice is often a program error. However, I
    might consider adding a (possibly extension) function `tryFulfill` that
    doesn't throw an exception. This would be useful in cases where multiple
    actors can fulfill an obligation.
+
 4. Currently, I ensure that all then/otherwise callbacks are run from the
    scheduler. This is almost always redundant because the callbacks are almost
    always intermediates that run a user function in an async environment (which
@@ -150,10 +154,39 @@ are slightly different.
    benefit of letting users create their own promises without interacting with
    the scheduler. HOWEVER, a call to then/fulfill would have to execute the
    callbacks itself which could lead to other bugs...
-5. For now, there's only one event loop. We might want to add more? One per
+
+5. For now, there's only one event loop. might want to add more. One per
    thread?
+
 6. In general, I doubt that people will manually call then/fulfill very often.
    Most cases will be solvable using async/await. However, making
    fulfill/then/otherwise available allows users to add lower-level async
    features.
+
+7. I don't handle Throwables, only Exceptions. If you want to catch/handle
+   an Error, you need to do so immediately. I could change this but I probably
+   won't, I really don't want Errors to go unnoticed.
+
+8. Who should be able to implement a Promise? Basically, what guarantees do
+   we want to make about a promises operation.
+  1. No restrictions: Anyone can make a promise and make it behave in whatever
+     manner they want.
+
+     We would either (a) need to trust them or (b) verify that callbacks added
+     by await are executed only once.
+
+  2. Fully restricted: No one can implement a Promise.
+
+     It might be useful to allow programmers to extend promises. For example,
+     one might want to implement a "Cancelable" promise.
+
+  3. Partially restricted: Anyone can implement a promise but the `then` and
+     `otherwise` methods are defined in the promise trait and are final.
+
+     Unfortunately, this would be a little difficult to implement in kotlin
+     as-is because traits can't private have state.
+
+9. An exception can be caught multiple times. Unless we say that only one
+   then/otherwise callback can be added to a promise, there isn't a safe way
+   (that I can think of) to avoid this. Anyways, IMHO, this isn't a problem.
 

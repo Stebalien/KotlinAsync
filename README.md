@@ -10,12 +10,70 @@ This async design is very much like C#'s except that:
 
   2. Everything runs on the same thread.
 
-At the core of this design is the `Promise<Value>`. Pretty much everything else
-is just sugar to make promises easier to work with. If you want to write an
-async function, just write a normal function but return a promise for the value
-instead of the value itself.
+At the core of this design is the `Promise<Value>` (and `Obligation<Value>`).
+Pretty much everything else is just sugar to make promises easier to work with.
+If you want to write an async function, just write a normal function but return
+a promise for the value instead of the value itself.
 
-This modification will add two keywords, async and await.
+Unlike in JavaScript, I've broken Promises into two classes: Promise and Obligation
+(reproduced below).
+
+```kt
+/**
+ * This is the public half that should be returned from an async function.
+ */
+public trait Promise<T> {
+    public var state: PromiseState
+        private set
+
+    /**
+     * Attach a success callback.
+     *
+     * When this promise is fulfilled, or if this promise has already been fulfilled,
+     * any function literals passed to this function will be called with the promises
+     * value.
+     */
+    public fun then(cb: (T) -> Unit): Unit
+
+    /**
+     * Attach an error callback.
+     *
+     * When this promise is broken, or if this promise has already been broken,
+     * any function literals passed to this function will be called with the
+     * associated exception.
+     */
+    public fun otherwise(fn: (Exception) -> Unit): Unit
+}
+/**
+ * This is the private half that should be kept by the actor responsible for
+ * fulfilling the associated promise.
+ */
+public trait Obligation<T> {
+    public var state: PromiseState
+        private set
+
+    /**
+     * Fulfill the obligation.
+     *
+     * Abandoning an obligation will mark the associated promise as fulfilled and
+     * trigger any functions attached via its the `then` method.
+     */
+    public fun fulfill(value: T): Unit
+    /**
+     * Abandon the obligation.
+     *
+     * Abandoning an obligation will mark the associated promise as broken and
+     * trigger any functions attached via its the `otherwise` method.
+     */
+    public fun abandon(exception: Exception): Unit
+}
+/**
+ * This is just a combination of an obligation and a promise.
+ */
+public trait OpenPromise<I, O>: Obligation<I>, Promise<O>
+```
+
+This modification will also add two keywords, async and await.
 
 `async` is just a block that returns a promise for it's inner value. That is:
 
@@ -27,17 +85,27 @@ val promisedInt: Promise<Int> = async { 0 }
 return it's value:
 
 ```kt
-val theInt: Int = await promisedInt
+async {
+    val theInt: Int = await promisedInt
+}
 ```
 
 `await` may only be used in an `async` block or a `try`/`while`/`for`/`if`/etc.
 block inside of an `async` block.
 
+The really nice thing about having an async block instead of async functions is that
+programmers can easily start up multiple async actions in parallel without having to
+define useless helper functions.
+
 The prototype also defines an `unblock` function. This does not need to be a
-keyword. Basically, `unblock{myMethod()}` returns a promise for the result of
+keyword. Basically, `unblock{myMethod()}` returns a Promise for the result of
 `myMethod()` and then calls `myMethod()` in a new thread (allocated as
 necessary from a thread pool). When `myMethod()` returns, it's return value is
 used to fulfill the promise.
+
+You may notice that the example code above does not call then, otherwise, fulfill,
+or abandon. While I expose these methods, they should really only be used for
+implementing lower-level async features.
 
 # Prototype Notes
 

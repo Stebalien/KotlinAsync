@@ -33,6 +33,18 @@ fun asyncMain(args: Array<String>) = async<Unit> {
     await<Unit>(unblock{Thread.sleep(1000)}) {
     println("third")
 
+    // Random interval timer.
+
+        /*
+    var canceled = false
+    val interval = async<Unit> {
+        await(awhile({!canceled}) {
+            println("Interval")
+            await(delay(10, TimeUnit.SECONDS))
+        })
+    }
+    */
+
     await<Unit>(aforeach(1..10) {
         if (it == 5) acontinue()
         if (it == 8) abreak()

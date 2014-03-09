@@ -351,14 +351,20 @@ public open class Async<O> internal () {
     }
 
     public fun aforeach<T>(iterable: Iterable<T>, body: LoopBody.(T) -> Unit): Promise<Unit> {
-        val iterator = iterable.iterator()
+        return aforeach(iterable.iterator(), body)
+    }
+
+    public fun aforeach<T>(iterator: Iterator<T>, body: LoopBody.(T) -> Unit): Promise<Unit> {
         return awhile({iterator.hasNext()}) {
             await(async{body(iterator.next())})
         }
     }
 
     public fun aforeach<T>(iterable: AsyncIterable<T>, body: LoopBody.(T) -> Unit): Promise<Unit> {
-        val iterator = iterable.iterator()
+        return aforeach(iterable.iterator(), body)
+    }
+
+    public fun aforeach<T>(iterator: AsyncIterator<T>, body: LoopBody.(T) -> Unit): Promise<Unit> {
         return awhile({await(iterator.hasNext())}) {
             await(async{body(iterator.next())})
         }

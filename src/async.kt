@@ -120,7 +120,7 @@ public class BasicPromise<T>(): OpenPromise<T, T> {
 
     private fun flush() {
         if (callbacks.notEmpty) when (state) {
-            PromiseState.FULFILLED ->   callbacks.flush(value!!)
+            PromiseState.FULFILLED ->   callbacks.flush(value as T) // Do not use !!. It can be null!
             PromiseState.BROKEN ->      callbacks.clear()
         }
         if (catchers.notEmpty) when (state) {

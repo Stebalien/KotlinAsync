@@ -3,9 +3,6 @@
  */
 
 
-
-import java.util.concurrent.TimeUnit
-
 fun main(args: Array<String>) {
     asyncMain(args) otherwise {
         throw it
@@ -51,15 +48,13 @@ fun asyncMain(args: Array<String>) = async<Unit> {
         println(it)
     }) {
 
-    val linesPromise = java.io.File("/etc/shells").readLinesAsync()
+    val iterator = java.io.File("/etc/shells").readLinesAsync()
     println("reading lines")
-    await(linesPromise) { lines ->
-
-    await<Unit>(aforeach(lines) { line ->
+    await<Unit>(aforeach(iterator) { line ->
         println(line)
     }) {
     println("done")
-}}}}}}}}
+}}}}}}}
 
 /* How it will actually look:
 

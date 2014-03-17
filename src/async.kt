@@ -22,7 +22,7 @@ private val threadManager = Executors.newCachedThreadPool()
 /**
  * This is the public half that should be returned from an async function.
  */
-public trait Promise<T> {
+public trait Promise<out T> {
     public var state: PromiseState
         private set
 
@@ -49,7 +49,7 @@ public trait Promise<T> {
  * This is the private half that should be kept by the actor responsible for
  * fulfilling the associated promise.
  */
-public trait Obligation<T> {
+public trait Obligation<in T> {
     public var state: PromiseState
         private set
 

@@ -56,7 +56,7 @@ public trait Obligation<in T> {
     /**
      * Fulfill the obligation.
      *
-     * Abandoning an obligation will mark the associated promise as fulfilled and
+     * Fulfilling an obligation will mark the associated promise as fulfilled and
      * trigger any functions attached via its the `then` method.
      */
     public fun fulfill(value: T): Unit

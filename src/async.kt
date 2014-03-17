@@ -8,6 +8,7 @@ import java.util.concurrent.atomic.AtomicReference
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.Queue
+import java.util.concurrent.Semaphore
 
 public enum class PromiseState {
     PENDING
@@ -212,6 +213,30 @@ public fun unblock<O>(fn: () -> O): Promise<O> {
         }
     }
     return promise
+}
+
+// You probably shouldn't use this...
+public fun block<O>(promise: Promise<O>): O {
+    // TODO: Throw exception if called from scheduler...
+    val lock = Semaphore(1)
+    var value: O? = null
+    var exception: Exception? = null
+    lock.acquire()
+    promise then {
+        value = it
+        lock.release()
+    }
+    promise otherwise {
+        exception = it
+        lock.release()
+    }
+    lock.acquire()
+
+    if (exception == null) {
+        return value as O
+    } else {
+        throw exception!!
+    }
 }
 
 public fun delay(time: Long, units: TimeUnit = TimeUnit.MILLISECONDS): Promise<Unit> {

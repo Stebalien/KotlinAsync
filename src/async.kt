@@ -264,8 +264,10 @@ public trait MutableAsyncIterable<E>: AsyncIterable<E> {
     override fun iterator(): MutableAsyncIterator<E>
 }
 
+private class EndPromise<T>(private val promise: Promise<T>): Promise<T> by promise
+private val DONE = EndPromise(TrivialPromise(Unit.VALUE))
+
 public open class Async<O> internal () {
-    private class ThrowablePromise<T>(private val promise: Promise<T>): Exception(), Promise<T> by promise
     private class AsyncLoopException : Exception()
 
     public class LoopBody internal (private val breakException: AsyncLoopException, private val continueException: AsyncLoopException): Async<Unit>() {
@@ -283,7 +285,7 @@ public open class Async<O> internal () {
             promise then { otherPromise fulfill it }
         }
         private var caught = false
-        public fun catch<E>(cls: Class<E>, catcher: Async<T>.(E) -> T): TryPromise<T> {
+        public fun catch<E>(cls: Class<E>, catcher: Async<T>.(E) -> EndPromise<T>): TryPromise<T> {
             promise otherwise {
                 if (!caught && (it.javaClass.identityEquals(cls) || it.javaClass.isInstance(cls)))  {
                     caught = true // No need to synchronize
@@ -292,7 +294,7 @@ public open class Async<O> internal () {
             }
             return this
         }
-        public fun finally(fn: Async<Unit>.() -> Unit): Promise<T> {
+        public fun finally(fn: Async<Unit>.() -> EndPromise<Unit>): Promise<T> {
             val finalPromise = BasicPromise<T>()
             otherPromise then { value ->
                 val finally = async<Unit>(fn)
@@ -319,7 +321,7 @@ public open class Async<O> internal () {
 
 
     // Multiple return types would make this less insane...
-    public fun await<I>(promise: Promise<I>, fn: Async<O>.(I) -> O): O {
+    public fun await<I>(promise: Promise<I>, fn: Async<O>.(I) -> EndPromise<O>): EndPromise<O> {
         val endPromise = BasicPromise<O>()
         promise then {
             endPromise receive async{fn(it)}
@@ -327,20 +329,18 @@ public open class Async<O> internal () {
         promise otherwise {
             endPromise abandon it
         }
-        throw ThrowablePromise(endPromise)
+        return EndPromise(endPromise)
     }
 
-    public fun await(promise: Promise<O>): O {
-        throw ThrowablePromise(promise)
+    public fun await(promise: Promise<O>): EndPromise<O> {
+        return EndPromise(promise)
     }
 
-    public fun async(fn: Async<O>.() -> O): Promise<O> {
+    public fun async(fn: Async<O>.() -> EndPromise<O>): Promise<O> {
         val promise = BasicPromise<O>()
         scheduler.submit {
             try {
-                promise fulfill this.fn()
-            } catch (e: ThrowablePromise<O>) {
-                promise receive e
+                promise receive this.fn()
             } catch (e: Exception) {
                 promise abandon e
             }
@@ -348,7 +348,7 @@ public open class Async<O> internal () {
         return promise
     }
 
-    public fun awhile(condition: Async<Boolean>.() -> Boolean, body: LoopBody.() -> Unit): Promise<Unit> {
+    public fun awhile(condition: Async<Boolean>.() -> EndPromise<Boolean>, body: LoopBody.() -> EndPromise<Unit>): Promise<Unit> {
         val breakException = AsyncLoopException()
         val continueException = AsyncLoopException()
         val bodyCtx = LoopBody(breakException, continueException)
@@ -372,31 +372,34 @@ public open class Async<O> internal () {
         return resultingPromise
     }
 
-    public fun aforeach<T>(iterable: Iterable<T>, body: LoopBody.(T) -> Unit): Promise<Unit> {
+    public fun aforeach<T>(iterable: Iterable<T>, body: LoopBody.(T) -> EndPromise<Unit>): Promise<Unit> {
         return aforeach(iterable.iterator(), body)
     }
 
-    public fun aforeach<T>(iterator: Iterator<T>, body: LoopBody.(T) -> Unit): Promise<Unit> {
-        return awhile({iterator.hasNext()}) {
+    public fun aforeach<T>(iterator: Iterator<T>, body: LoopBody.(T) -> EndPromise<Unit>): Promise<Unit> {
+        return awhile({done(iterator.hasNext())}) {
             await(async{body(iterator.next())})
         }
     }
 
-    public fun aforeach<T>(iterable: AsyncIterable<T>, body: LoopBody.(T) -> Unit): Promise<Unit> {
+    public fun done<T>(v: T): EndPromise<T> = EndPromise(TrivialPromise(v))
+    public fun done(): EndPromise<Unit> = DONE
+
+    public fun aforeach<T>(iterable: AsyncIterable<T>, body: LoopBody.(T) -> EndPromise<Unit>): Promise<Unit> {
         return aforeach(iterable.iterator(), body)
     }
 
-    public fun aforeach<T>(iterator: AsyncIterator<T>, body: LoopBody.(T) -> Unit): Promise<Unit> {
+    public fun aforeach<T>(iterator: AsyncIterator<T>, body: LoopBody.(T) -> EndPromise<Unit>): Promise<Unit> {
         return awhile({await(iterator.hasNext())}) {
             await(async{body(iterator.next())})
         }
     }
 
-    public fun atry<T>(fn: Async<T>.() -> T): TryPromise<T> {
+    public fun atry<T>(fn: Async<T>.() -> EndPromise<T>): TryPromise<T> {
         return TryPromise(async(fn))
     }
 }
 
-public fun async<O>(fn: Async<O>.() -> O): Promise<O> {
+public fun async<O>(fn: Async<O>.() -> EndPromise<O>): Promise<O> {
     return Async<O>().async(fn)
 }

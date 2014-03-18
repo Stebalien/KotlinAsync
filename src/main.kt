@@ -17,9 +17,11 @@ fun asyncMain(args: Array<String>) = async<Unit> {
         throw IllegalStateException("Testing")
     }.catch(javaClass<IllegalStateException>()) {
         println("here")
+        done()
         //throw it
     }.finally {
         println("at last")
+        done()
     }) {
 
     println("first")
@@ -46,14 +48,17 @@ fun asyncMain(args: Array<String>) = async<Unit> {
         if (it == 5) acontinue()
         if (it == 8) abreak()
         println(it)
+        done()
     }) {
 
     val iterator = java.io.File("/etc/shells").readLinesAsync()
     println("reading lines")
     await<Unit>(aforeach(iterator) { line ->
         println(line)
+        done()
     }) {
     println("done")
+    done()
 }}}}}}}
 
 /* How it will actually look:

@@ -29,17 +29,16 @@ private class AsyncFileIterator(private val file: File): AsyncIterator<String> {
     }
     override fun hasNext(): Promise<Boolean> = async {
         if (next != null) {
-            true
+            done(true)
         } else {
             await(bufferedReader.readLineAsync()) { line ->
-                if (line == null) {
-                    false
-                } else {
-                    next = line
-                    true
-                }
+            if (line == null) {
+                done(false)
+            } else {
+                next = line
+                done(true)
             }
-        }
+        }}
     }
 }
 
@@ -53,14 +52,15 @@ fun <T> AsyncIterator<T>.toList(): Promise<List<T>> {
         val list = ArrayList<T>()
         await(aforeach(that) {
             list.add(it)
+            done()
         }){
-        list
+        done(list)
     }}
 }
 
 fun File.readTextAsync(): Promise<String> = async {
     // Totally inefficient. This is just a demonstration.
     await(readLinesAsync().toList()) {
-        it.makeString("\n")
+        done(it.makeString("\n"))
     }
 }

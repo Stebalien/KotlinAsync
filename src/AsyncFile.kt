@@ -5,7 +5,6 @@
 import java.util.NoSuchElementException
 import java.io.File
 import java.io.BufferedReader
-import java.util.ArrayList
 
 fun BufferedReader.readLineAsync(): Promise<String?> = unblock {
     readLine()
@@ -27,18 +26,19 @@ private class AsyncFileIterator(private val file: File): AsyncIterator<String> {
         next = null
         return tmp
     }
-    override fun hasNext(): Promise<Boolean> = async {
+    override fun hasNext(): Promise<Boolean> = async<Boolean> {
         if (next != null) {
             done(true)
         } else {
-            await(bufferedReader.readLineAsync()) { line ->
-            if (line == null) {
-                done(false)
-            } else {
-                next = line
-                done(true)
-            }
-        }}
+            await(bufferedReader.readLineAsync().then { line ->
+                if (line == null) {
+                    false
+                } else {
+                    next = line
+                    true
+                }
+            })
+        }
     }
 }
 
@@ -46,21 +46,5 @@ fun java.io.File.readLinesAsync(): AsyncIterator<String> {
     return AsyncFileIterator(this)
 }
 
-fun <T> AsyncIterator<T>.toList(): Promise<List<T>> {
-    val that = this // Should't be a problem in the final version
-    return async {
-        val list = ArrayList<T>()
-        await(aforeach(that) {
-            list.add(it)
-            done()
-        }){
-        done(list)
-    }}
-}
-
-fun File.readTextAsync(): Promise<String> = async {
-    // Totally inefficient. This is just a demonstration.
-    await(readLinesAsync().toList()) {
-        done(it.makeString("\n"))
-    }
-}
+// Totally inefficient. This is just a demonstration.
+fun File.readTextAsync(): Promise<String> = readLinesAsync().toList() then { it.makeString("\n") }

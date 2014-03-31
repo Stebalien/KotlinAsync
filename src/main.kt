@@ -3,108 +3,67 @@
  */
 
 
+import kotlin.properties.Delegates
+
 fun main(args: Array<String>) {
-    asyncMain(args) otherwise {
-        throw it
+    asyncMain(args) otherwise { throw it }
+}
+
+class ObservableValue<T>(initial: T) {
+    public var value: T by Delegates.observable(initial) { metadata, old, new ->
+        changeSignal.fire(new)
     }
+    private val changeSignal: Signal<T> = Signal()
+    public val changes: AsyncIterable<T> = changeSignal.safe()
 }
 
 fun asyncMain(args: Array<String>) = async<Unit> {
-    await(TrivialPromise(1)) {
-
-    await(atry<Unit> {
+    await(tryAsync<Unit> {
         println("before")
         throw IllegalStateException("Testing")
     }.catch(javaClass<IllegalStateException>()) {
         println("here")
-        done()
         //throw it
     }.finally {
         println("at last")
-        done()
-    }) {
-
+    })
+}.thenAsync<Unit> {
     println("first")
     // Kotlin *claims* it can't deduce the type Unit. However, it demonstrates
     // that it can in the error message...
-    await<Unit>(delay(1000)) {
+    await(delay(1000))
+}.thenAsync<Unit> {
     println("second")
-    await<Unit>(unblock{Thread.sleep(1000)}) {
+    await(unblock { Thread.sleep(1000) })
+}.thenAsync<Unit> {
     println("third")
 
-    // Random interval timer.
-
-        /*
-    var canceled = false
-    val interval = async<Unit> {
-        await(awhile({!canceled}) {
-            println("Interval")
-            await(delay(10, TimeUnit.SECONDS))
-        })
-    }
-    */
-
-    await<Unit>(aforeach(1..10) {
+    await(foreachAsync(1..10) {
         if (it == 5) acontinue()
         if (it == 8) abreak()
         println(it)
         done()
     }) {
+        done(println("loop 1 done"))
+    }
+}.thenAsync<Unit> {
+
+    val value = ObservableValue(1)
+    val sigPromise = foreachAsync(value.changes) {
+        println(it)
+        done()
+    }
+    value.value = 2
+    value.value = 3
+    value.value = 4
 
     val iterator = java.io.File("/etc/shells").readLinesAsync()
     println("reading lines")
-    await<Unit>(aforeach(iterator) { line ->
+    await(foreachAsync(iterator) { line ->
         println(line)
         done()
-    }) {
+    })
+}.then {
     println("done")
-    done()
-}}}}}}}
-
-/* How it will actually look:
-
-fun asyncMain(args: Array<String>) = async {
-    await TrivialPromise(1)
-
-    try {
-        println("before")
-        throw IllegalStateException("Testing")
-    } catch (it: IllegalStateException) {
-        println("here")
-        //throw it
-    } finally {
-        println("at last")
-    }
-
-    println("first")
-
-    await sleep(1000)
-    println("second")
-    await unblock{Thread.sleep(1000)}
-    println("third")
-
-    var canceled = false
-    val interval = async {
-        while(!canceled) {
-            println("Interval")
-            await sleep(10, TimeUnit.SECONDS)
-        }
-    }
-
-    for (it in 1..10) {
-        if (it == 5) continue
-        if (it == 8) break
-        println(it)
-    }
-
-    val linesPromise = java.io.File("/etc/shells").readLinesAsync()
-    println("reading lines")
-    val lines = await linesPromise
-
-    for (line in lines)
-        println(line)
-    }
-    println("done")
-    await interval
 }
- */
+
